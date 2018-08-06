@@ -1,6 +1,6 @@
 This is not yet ready for release.
 
-This is a port of Caffeine originally written for Java by Ben Maines. (https://github.com/ben-manes/caffeine)
+This is a port of Caffeine originally written for Java by Ben Manes. (https://github.com/ben-manes/caffeine)
 This version of Caffeine.NET has been written for .NET Core 2.1 (https://github.com/dotnet/core/releases)
 
 This is still in development. A good bulk of the code has been written, but there remains a lot of debugging and testing to be done. If you're interested in helping let us know. We're looking for committers.
