@@ -1184,7 +1184,7 @@ namespace Caffeine.Cache
             // TODO: Handle weak reference collection.. Java has a concept of a referencequeue.. and when a weakreference is collected, the weak reference is added to the queue.
             // .NET does not have this concept.. essentially what would have to happen is we would have to iterate over *ALL* the keys checking to see if the key has been 
             // collected.. if it had, then remove.. 
-            //while ((keyRef = KeyReferenceQueue().Poll()) != null)
+            //while ((keyRef = KeyReferenceQueue().Dequeue()) != null)
             //{
             //    Node<K, V> node = null;
             //    data.TryGetValue((K)keyRef, out node);
@@ -1203,7 +1203,7 @@ namespace Caffeine.Cache
                 return;
 
             // TODO: see same problem above with DrainKeyreferences.
-            //while ((valueRef = ValueReferenceQueue().Poll()) != null)
+            //while ((valueRef = ValueReferenceQueue().Dequeue()) != null)
             //{
             //    Node<K, V> node = null;
             //    data.TryGetValue(valueRef.KeyReference, out node);
@@ -1315,7 +1315,7 @@ namespace Caffeine.Cache
 
             for (int i = 0; i < WRITE_BUFFER_MAX; i++)
             {
-                Task task = WriteBuffer.Poll();
+                Task task = WriteBuffer.Dequeue();
                 if (task == null)
                     break;
 
@@ -1367,7 +1367,7 @@ namespace Caffeine.Cache
                 long now = ExpirationTicker.Ticks();
 
                 Task runner;
-                while (BuffersWrites && (runner = WriteBuffer.Poll()) != null)
+                while (BuffersWrites && (runner = WriteBuffer.Dequeue()) != null)
                 {
                     runner.Start();
                 }

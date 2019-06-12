@@ -29,7 +29,7 @@ namespace Caffeine.Cache.MpscQueue
     /// on resize, instead a link to the new buffer is stored in the old buffer for the consumer to follow.
     /// </summary>
     /// <typeparam name="E"></typeparam>
-    internal sealed class MpscGrowableArrayQueue<E> : MpscChunkedArrayQueuecs<E> where E : class
+    internal sealed class MpscGrowableArrayQueue<T> : MpscChunkedArrayQueuecs<T>
     {
         /// <summary>
         /// 
@@ -41,7 +41,7 @@ namespace Caffeine.Cache.MpscQueue
             : base(initialCapacity, maxCapacity)
         { }
 
-        protected override int GetNextBufferSize(E[] buffer)
+        protected override int GetNextBufferSize((T Item, object NextBuffer)[] buffer)
         {
             long maxSize = maxQueueCapacity / 2;
 

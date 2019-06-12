@@ -29,7 +29,7 @@ namespace Caffeine.Cache.MpscQueue
     {
         protected long producerLimit = 0;
         protected long producerMask = 0;
-        protected T[] producerBuffer;
+        protected (T Item, object nextBuffer)[] producerBuffer;
 
         public BaseMpscLinkedArrayQueueColdProducerFields()
         { }

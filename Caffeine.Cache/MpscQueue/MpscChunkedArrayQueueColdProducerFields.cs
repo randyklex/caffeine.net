@@ -23,7 +23,7 @@ using System;
 
 namespace Caffeine.Cache.MpscQueue
 {
-    internal abstract class MpscChunkedArrayQueueColdProducerFields<E> : BaseMpscLinkedArrayQueue<E> where E : class
+    internal abstract class MpscChunkedArrayQueueColdProducerFields<T> : BaseMpscLinkedArrayQueue<T>
     {
         protected readonly long maxQueueCapacity;
 

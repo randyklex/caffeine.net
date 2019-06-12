@@ -25,10 +25,14 @@ using System.Threading;
 
 namespace Caffeine.Cache.MpscQueue
 {
-    internal abstract class BaseMpscLinkedArrayQueue<T> : BaseMpscLinkedArrayQueueColdProducerFields<T> where T : class
+    internal abstract class BaseMpscLinkedArrayQueue<T> : BaseMpscLinkedArrayQueueColdProducerFields<T>
     {
         private readonly static T JUMP = default(T);
-        private readonly int REF_ELEMENT_SHIFT = IntPtr.Size == 4 ? 2 : 3; 
+        private readonly int REF_ELEMENT_SHIFT = IntPtr.Size == 4 ? 2 : 3;
+
+        private const int RETRY = 1;
+        private const int FULL = 2;
+        private const int RESIZE = 3;
 
         public BaseMpscLinkedArrayQueue(int initialCapacity)
         {
@@ -44,7 +48,7 @@ namespace Caffeine.Cache.MpscQueue
             // TODO: he called a method "allocate" which created an array of object[], and then casts to the desired type. maybe that's a JAVA quirk?
             // I think this allocate casted back to type T was so that he could store in an object array a pointer to the next buffer array..
             // +1 because we need extra element to point at next array
-            T[] buffer = new T[p2capacity + 1];
+            (T Item, object NextBuffer)[] buffer = new (T Item, object NextBuffer)[p2capacity + 1];
 
             producerBuffer = buffer;
             producerMask = mask;
@@ -65,7 +69,7 @@ namespace Caffeine.Cache.MpscQueue
                 throw new NullReferenceException("item cannot be null.");
 
             long mask;
-            T[] buffer;
+            (T, object)[] buffer;
             long pIndex;
 
             while (true)
@@ -73,8 +77,8 @@ namespace Caffeine.Cache.MpscQueue
                 long producerLimit = base.producerLimit;
                 pIndex = base.producerIndex;
 
-                // lower bit is indicative of resize, if we see it we spin until it's cleared
-                if ((pIndex & 1) == 1)
+                // if resizing, spin till it's no longer resizing.
+                if (IsResizing(pIndex))
                     continue;
 
                 // mask/buffer may get changed by resizing -> only use for array access after successful CAS.
@@ -89,11 +93,11 @@ namespace Caffeine.Cache.MpscQueue
                     {
                         case 0:
                             break;
-                        case 1:
+                        case RETRY:
                             continue;
-                        case 2:
+                        case FULL:
                             return false;
-                        case 3:
+                        case RESIZE:
                             Resize(mask, buffer, pIndex, item);
                             return true;
                     }
@@ -105,8 +109,14 @@ namespace Caffeine.Cache.MpscQueue
 
             // index visible before element, consistent with consumer expectation.
             long offSet = ModifiedCalcElementOffset(pIndex, mask);
-            buffer[offSet] = item;
+            buffer[offSet] = (item, null);
             return true;
+        }
+
+        private bool IsResizing(long pIndex)
+        {
+            // lower bit is indicative of resize.
+            return ((pIndex & 1) == 1);
         }
 
         private bool CasProducerIndex(long expect, long newValue)
@@ -137,20 +147,20 @@ namespace Caffeine.Cache.MpscQueue
             if (cIndex + bufferCapacity > pIndex)
             {
                 if (!CasProducerLimit(producerLimit, cIndex + bufferCapacity))
-                    result = 1; // retry from top.
+                    result = RETRY; // retry from top.
             }
             // full and cannot grow
             else if (AvailableInQueue(pIndex, cIndex) <= 0)
             {
-                result = 2; // return false;
+                result = FULL; // return false;
             }
             // grab index for resize -> set lower bit
             else if (CasProducerIndex(pIndex, pIndex + 1))
             {
-                result = 3; // resize
+                result = RESIZE; // resize
             }
             else
-                result = 1; // failed resize attempt, retry from top.
+                result = RETRY; // failed resize attempt, retry from top.
 
             return result;
         }
@@ -167,21 +177,24 @@ namespace Caffeine.Cache.MpscQueue
         /// This impelmentation is correct for single consumer thread use only.
         /// </summary>
         /// <returns></returns>
-        public T Poll()
+        // TODO: Changed from Poll to Dequeue to be inline with .NET nomenclature
+        public T Dequeue()
         {
-            T[] buffer = consumerBuffer;
+            (T Item, object NextBuffer)[] buffer = consumerBuffer;
             long index = consumerIndex;
             long mask = consumerMask;
 
             long offSet = ModifiedCalcElementOffset(index, mask);
-            T item = buffer[offSet];
+            T item = buffer[offSet].Item;
+            object nextBufferPtr = buffer[offSet].NextBuffer;
+
             if (EqualityComparer<T>.Default.Equals(item, default(T)))
             {
                 if (index != base.producerIndex)
                 {
                     do
                     {
-                        item = buffer[offSet];
+                        item = buffer[offSet].Item;
 
                     } while (EqualityComparer<T>.Default.Equals(item, default(T)));
                 }
@@ -191,13 +204,13 @@ namespace Caffeine.Cache.MpscQueue
                 }
             }
 
-            if (EqualityComparer<T>.Default.Equals(item, JUMP))
+            if (EqualityComparer<object>.Default.Equals(nextBufferPtr, JUMP))
             {
-                T[] nextBuffer = GetNextBuffer(buffer, mask);
-                return NewBufferPoll(nextBuffer, index);
+                (T Item, object NextBuffer)[] nextBuffer = GetNextBuffer(buffer, mask);
+                return NewBufferDequeue(nextBuffer, index);
             }
 
-            buffer[offSet] = default(T);
+            buffer[offSet] = (default(T), null);
             Interlocked.Exchange(ref base.consumerIndex, index + 2);
 
             return item;
@@ -209,32 +222,34 @@ namespace Caffeine.Cache.MpscQueue
         /// <returns></returns>
         public T Peek()
         {
-            T[] buffer = consumerBuffer;
+            (T Item, object NextBuffer)[] buffer = consumerBuffer;
             long index = base.consumerIndex;
             long mask = base.consumerMask;
 
             long offset = ModifiedCalcElementOffset(index, mask);
-            T item = buffer[offset];
+            T item = buffer[offset].Item;
+            object nextBuffer = buffer[offset].NextBuffer;
+ 
             if (EqualityComparer<T>.Default.Equals(item, default(T)) && index != base.producerIndex)
             {
-                while (EqualityComparer<T>.Default.Equals((item = buffer[offset]), default(T)))
+                while (EqualityComparer<T>.Default.Equals((item = buffer[offset].Item), default(T)))
                 {
                     ;
                 }
             }
 
-            if (EqualityComparer<T>.Default.Equals(item, JUMP))
+            if (EqualityComparer<object>.Default.Equals(nextBuffer, JUMP))
                 return NewBufferPeek(GetNextBuffer(buffer, mask), index);
 
             return item;
         }
 
-        private T[] GetNextBuffer(T[] buffer, long mask)
+        private (T Item, object NextBuffer)[] GetNextBuffer((T Item, object NextBuffer)[] buffer, long mask)
         {
             long nextArrayOffset = NextArrayOffset(mask);
-            T[] nextBuffer = buffer[nextArrayOffset] as T[];
+            (T Item, object NextBuffer)[] nextBuffer = buffer[nextArrayOffset] as (T Item, object NextBuffer)[];
 
-            buffer[nextArrayOffset] = default(T);
+            buffer[nextArrayOffset] = (default(T), null);
             return nextBuffer;
         }
 
@@ -243,24 +258,24 @@ namespace Caffeine.Cache.MpscQueue
             return ModifiedCalcElementOffset(mask + 2, long.MaxValue);
         }
 
-        private T NewBufferPoll(T[] nextBuffer, long index)
+        private T NewBufferDequeue((T Item, object NextBuffer)[] nextBuffer, long index)
         {
             long offsetInNew = NewBufferAndOffset(nextBuffer, index);
-            T item = nextBuffer[offsetInNew];
+            T item = nextBuffer[offsetInNew].Item;
 
             if (EqualityComparer<T>.Default.Equals(item, default(T)))
                 throw new InvalidOperationException("new buffer must have at least one element");
 
-            nextBuffer[offsetInNew] = default(T);
+            nextBuffer[offsetInNew] = (default(T), null);
             Interlocked.Exchange(ref base.consumerIndex, index + 2);
 
             return item;
         }
 
-        private T NewBufferPeek(T[] nextBuffer, long index)
+        private T NewBufferPeek((T Item, object NextBuffer)[] nextBuffer, long index)
         {
             long offsetInNew = NewBufferAndOffset(nextBuffer, index);
-            T item = nextBuffer[offsetInNew];
+            T item = nextBuffer[offsetInNew].Item;
 
             if (EqualityComparer<T>.Default.Equals(item, default(T)))
                 throw new InvalidOperationException("new buffer must have at least on element");
@@ -268,7 +283,7 @@ namespace Caffeine.Cache.MpscQueue
             return item;
         }
 
-        private long NewBufferAndOffset(T[] nextBuffer, long index)
+        private long NewBufferAndOffset((T Item, object NextBuffer)[] nextBuffer, long index)
         {
             consumerBuffer = nextBuffer;
             consumerMask = (nextBuffer.Length - 2L) << 1;
@@ -328,48 +343,50 @@ namespace Caffeine.Cache.MpscQueue
             get { return base.consumerIndex == base.producerIndex; }
         }
 
-        public T RelaxedPoll()
+        public T RelaxedDequeue()
         {
-            T[] buffer = consumerBuffer;
+            (T Item, object NextBuffer)[] buffer = consumerBuffer;
             long index = base.consumerIndex;
             long mask = base.consumerMask;
 
             long offset = ModifiedCalcElementOffset(index, mask);
-            T item = buffer[offset];
+            T item = buffer[offset].Item;
+            object nextBufferPtr = buffer[offset].NextBuffer;
 
             if (EqualityComparer<T>.Default.Equals(item, default(T)))
                 return item;
 
-            if (EqualityComparer<T>.Default.Equals(item, JUMP))
+            if (EqualityComparer<object>.Default.Equals(nextBufferPtr, JUMP))
             {
-                T[] nextBuffer = GetNextBuffer(buffer, mask);
-                return NewBufferPoll(nextBuffer, index);
+                (T Item, object NextBuffer)[] nextBuffer = GetNextBuffer(buffer, mask);
+                return NewBufferDequeue(nextBuffer, index);
             }
 
-            buffer[offset] = default(T);
+            buffer[offset] = (default(T), null);
             Interlocked.Exchange(ref base.consumerIndex, index + 2);
             return item;
         }
 
         public T RelaxedPeek()
         {
-            T[] buffer = consumerBuffer;
+            (T Item, object NextBuffer)[] buffer = consumerBuffer;
             long index = base.consumerIndex;
             long mask = base.consumerMask;
 
             long offset = ModifiedCalcElementOffset(index, mask);
-            T item = buffer[offset];
+            T item = buffer[offset].Item;
+            object nextBufferPtr = buffer[offset].NextBuffer;
 
-            if (EqualityComparer<T>.Default.Equals(item, JUMP))
+            if (EqualityComparer<object>.Default.Equals(nextBufferPtr, JUMP))
                 return NewBufferPeek(GetNextBuffer(buffer, mask), index);
 
             return item;
         }
 
-        private void Resize(long oldMask, T[] oldBuffer, long pIndex, T e)
+        private void Resize(long oldMask, (T Item, object NextBuffer)[] oldBuffer, long pIndex, T e)
         {
             int newBufferLength = GetNextBufferSize(oldBuffer);
-            T[] newBuffer = new T[newBufferLength];
+            (T Item, object NextBuffer)[] newBuffer = new (T Item, object NextBuffer)[newBufferLength];
 
             producerBuffer = newBuffer;
             int newMask = (newBufferLength - 2) << 1;
@@ -378,8 +395,8 @@ namespace Caffeine.Cache.MpscQueue
             long offsetInOld = ModifiedCalcElementOffset(pIndex, oldMask);
             long offsetInNew = ModifiedCalcElementOffset(pIndex, newMask);
 
-            newBuffer[offsetInNew] = e;
-            oldBuffer[NextArrayOffset(oldMask)] = ((object)newBuffer) as T;
+            newBuffer[offsetInNew].Item = e;
+            oldBuffer[NextArrayOffset(oldMask)].NextBuffer = newBuffer;
             //soElement(newBuffer, offsetInNew, e);
             //soElement(oldBuffer, NextArrayOffset(oldMask), newBuffer);
 
@@ -396,11 +413,12 @@ namespace Caffeine.Cache.MpscQueue
             // INDEX visible before ELEMENT< consistent with consumer expectation
 
             // make resize visible to consumer.
+            oldBuffer[offsetInOld].NextBuffer = JUMP;
         }
 
         public abstract int Capacity { get; }
 
-        protected abstract int GetNextBufferSize(T[] buffer);
+        protected abstract int GetNextBufferSize((T Item, object NextBuffer)[] buffer);
 
         protected abstract long GetCurrentBufferCapacity(long mask);
     }

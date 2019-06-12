@@ -66,6 +66,8 @@ namespace Caffeine.Cache
 
         private void Dispose(bool disposing)
         { }
+
+        public abstract T1 Peek();
     }
 
     internal class AscendingPeekingEnumerator<T, T1> : PeekingEnumerator<T, T1> where T : AbstractLinkedDeque<T1>
@@ -86,6 +88,11 @@ namespace Caffeine.Cache
 
             return false;
         }
+
+        public override T1 Peek()
+        {
+            throw new NotImplementedException();
+        }
     }
 
     internal class DescendingPeekingEnumerator<T, T1> : PeekingEnumerator<T, T1> where T : AbstractLinkedDeque<T1>
@@ -105,6 +112,11 @@ namespace Caffeine.Cache
                 return true;
 
             return false;
+        }
+
+        public override T1 Peek()
+        {
+            throw new NotImplementedException();
         }
     }
 }

@@ -28,7 +28,7 @@ namespace Caffeine.Cache.MpscQueue
     internal class BaseMpscLinkedArrayQueueConsumerFields<T> : BaseMpscLinkedArrayQueuePad2<T>
     {
         protected long consumerMask;
-        protected T[] consumerBuffer;
+        protected (T Item, object nextBuffer)[] consumerBuffer;
         protected long consumerIndex;
     }
 }

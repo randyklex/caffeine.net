@@ -25,7 +25,7 @@ using System.Text;
 
 namespace Caffeine.Cache.MpscQueue
 {
-    internal abstract class MpscChunkedArrayQueuecs<E> : MpscChunkedArrayQueueColdProducerFields<E> where E : class
+    internal abstract class MpscChunkedArrayQueuecs<T> : MpscChunkedArrayQueueColdProducerFields<T>
     {
         long po0, p1, p2, p3, p4, p5, p6, p7;
         long p10, p11, p12, p13, p14, p15, p16, p17;
@@ -44,7 +44,7 @@ namespace Caffeine.Cache.MpscQueue
             get { return (int)(maxQueueCapacity / 2); }
         }
 
-        protected override int GetNextBufferSize(E[] buffer)
+        protected override int GetNextBufferSize((T Item, object NextBuffer)[] buffer)
         {
             return buffer.Length;
         }

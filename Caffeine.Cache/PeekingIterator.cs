@@ -23,18 +23,13 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 
+using Caffeine.Cache.Interfaces;
+
 namespace Caffeine.Cache
 {
-    public interface IPeekingIterator<T> : IEnumerator<T>, IEnumerator
-    {
-        /// <summary>
-        /// Returns the next element in the iteration without advancing the iteration.
-        /// </summary>
-        /// <returns></returns>
-        T Peek();
-    }
-
-    public abstract class PeekingIterator<T> : IPeekingIterator<T>
+    // TODO: This was a conversion from an interface of PeekingIterator in Java, to PeekingEnumerator abstract.
+    // I converted because the interface actually had some implementation so this became an abstract class.
+    public abstract class PeekingIterator<T> : IPeekingEnumerator<T>
     {
         public T Current => throw new System.NotImplementedException();
 
@@ -66,10 +61,10 @@ namespace Caffeine.Cache
 
     public class ConcatPeekingIterator<T> : PeekingIterator<T>
     {
-        IPeekingIterator<T> first;
-        IPeekingIterator<T> second;
+        IPeekingEnumerator<T> first;
+        IPeekingEnumerator<T> second;
 
-        public ConcatPeekingIterator(IPeekingIterator<T> first, IPeekingIterator<T> second)
+        public ConcatPeekingIterator(IPeekingEnumerator<T> first, IPeekingEnumerator<T> second)
         {
             this.first = first;
             this.second = second;
@@ -96,11 +91,11 @@ namespace Caffeine.Cache
 
     public class ComparingPeekingIterator<T> : PeekingIterator<T>
     {
-        IPeekingIterator<T> first;
-        IPeekingIterator<T> second;
+        IPeekingEnumerator<T> first;
+        IPeekingEnumerator<T> second;
         IComparer<T> comparer;
 
-        public ComparingPeekingIterator(IPeekingIterator<T> first, IPeekingIterator<T> second, IComparer<T> comparer)
+        public ComparingPeekingIterator(IPeekingEnumerator<T> first, IPeekingEnumerator<T> second, IComparer<T> comparer)
         {
             this.first = first;
             this.second = second;
@@ -134,12 +129,12 @@ namespace Caffeine.Cache
 
     public static class PeekingIteratorFactory<T>
     {
-        static IPeekingIterator<T> Concat(IPeekingIterator<T> first, IPeekingIterator<T> second)
+        static IPeekingEnumerator<T> Concat(IPeekingEnumerator<T> first, IPeekingEnumerator<T> second)
         {
             return new ConcatPeekingIterator<T>(first, second);
         }
 
-        static IPeekingIterator<T> Comparing(IPeekingIterator<T> first, IPeekingIterator<T> second, IComparer<T> comparer)
+        static IPeekingEnumerator<T> Comparing(IPeekingEnumerator<T> first, IPeekingEnumerator<T> second, IComparer<T> comparer)
         {
             return new ComparingPeekingIterator<T>(first, second, comparer);
         }
