@@ -1,34 +1,27 @@
-﻿/*
- * Copyright 2018 Randy Lynn, Zach Jones. All Rights Reserved.
- * 
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the Liense at
- * 
- *       http://www.apache.org/licenses/LICENSE-2.0
- * 
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- * 
- * 
- * Original Author in JAVA: Ben Manes (ben.manes@gmail.com)
- * Ported to C# .NET by: Randy Lynn (randy.lynn.klex@gmail.com), Zach Jones (zachary.b.jones@gmail.com)
- * 
+﻿/**
+ * An MPSC array queue which starts at <i>initialCapacity</i> and grows to <i>maxCapacity</i> in
+ * linked chunks of the initial size. The queue grows only when the current buffer is full and
+ * elements are not copied on resize, instead a link to the new buffer is stored in the old buffer
+ * for the consumer to follow.<br>
+ * <p>
+ * This is a shaded copy of <tt>MpscGrowableArrayQueue</tt> provided by
+ * <a href="https://github.com/JCTools/JCTools">JCTools</a> from version 2.0.
+ *
+ * @author nitsanw@yahoo.com (Nitsan Wakart)
  */
 
 using System;
 using System.Collections.Generic;
 using System.Threading;
 
+using Caffeine.Cache.Interfaces;
+
 namespace Caffeine.Cache.MpscQueue
 {
-    internal abstract class BaseMpscLinkedArrayQueue<T> : BaseMpscLinkedArrayQueueColdProducerFields<T>
+    internal abstract class BaseMpscLinkedArrayQueue<T> : BaseMpscLinkedArrayQueueColdProducerFields<T>, IQueue<T>
     {
-        private readonly static T JUMP = default(T);
-        private readonly int REF_ELEMENT_SHIFT = IntPtr.Size == 4 ? 2 : 3;
+        private readonly static object JUMP = new object();
+        //private readonly int REF_ELEMENT_SHIFT = IntPtr.Size == 4 ? 2 : 3;
 
         private const int RETRY = 1;
         private const int FULL = 2;
@@ -63,14 +56,16 @@ namespace Caffeine.Cache.MpscQueue
             return GetType().Name + "@" + GetHashCode().ToString("x");
         }
 
-        public bool Offer(T item)
+        // TODO: Changed from Offer as in the Java version to match .NET semantics
+        public bool Enqueue(T item)
         {
-            if (EqualityComparer<T>.Default.Equals(item, default(T)))
-                throw new NullReferenceException("item cannot be null.");
+            // TODO: Removed the Default(T) check.. Because I want this queue to be usable with Value Types.
+            // and if you're a value type like int, a default(int) is 0, which someone might want to enqueue.
+            // NOTE: this is consistent with BCL generics.. you can add NULL items to a list.
 
             long mask;
-            (T, object)[] buffer;
             long pIndex;
+            (T, object)[] buffer;
 
             while (true)
             {
@@ -81,7 +76,8 @@ namespace Caffeine.Cache.MpscQueue
                 if (IsResizing(pIndex))
                     continue;
 
-                // mask/buffer may get changed by resizing -> only use for array access after successful CAS.
+                // mask/buffer may get changed by resizing
+                // pnly use for array access after successful CAS.
                 mask = this.producerMask;
                 buffer = this.producerBuffer;
 
@@ -126,7 +122,7 @@ namespace Caffeine.Cache.MpscQueue
 
         private long ModifiedCalcElementOffset(long index, long mask)
         {
-            return (index & mask) << (REF_ELEMENT_SHIFT - 1);
+            return (index & mask) >> 1;
         }
 
         /// <summary>
@@ -164,14 +160,6 @@ namespace Caffeine.Cache.MpscQueue
 
             return result;
         }
-
-        /// <summary>
-        /// Available elements in queue * 2.
-        /// </summary>
-        /// <param name="pIndex"></param>
-        /// <param name="cIndex"></param>
-        /// <returns></returns>
-        protected abstract long AvailableInQueue(long pIndex, long cIndex);
 
         /// <summary>
         /// This impelmentation is correct for single consumer thread use only.
@@ -316,7 +304,7 @@ namespace Caffeine.Cache.MpscQueue
 
         public bool RelaxedOffer(T item)
         {
-            return Offer(item);
+            return Enqueue(item);
         }
 
         private bool CasProducerLimit(long expect, long newValue)
@@ -421,5 +409,13 @@ namespace Caffeine.Cache.MpscQueue
         protected abstract int GetNextBufferSize((T Item, object NextBuffer)[] buffer);
 
         protected abstract long GetCurrentBufferCapacity(long mask);
+
+        /// <summary>
+        /// Available elements in queue * 2.
+        /// </summary>
+        /// <param name="pIndex"></param>
+        /// <param name="cIndex"></param>
+        /// <returns></returns>
+        protected abstract long AvailableInQueue(long pIndex, long cIndex);
     }
 }

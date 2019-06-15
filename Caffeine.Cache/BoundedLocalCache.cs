@@ -1015,7 +1015,7 @@ namespace Caffeine.Cache
             {
                 for (int i = 0; i < WRITE_BUFFER_RETRIES; i++)
                 {
-                    if (WriteBuffer.Offer(task))
+                    if (WriteBuffer.Enqueue(task))
                     {
                         ScheduleAfterWrite();
                         return;

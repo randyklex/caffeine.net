@@ -31,11 +31,13 @@ namespace Caffeine.Cache.MpscQueue
             : base(initialCapacity)
         {
             if (maxCapacity < 4)
-                throw new ArgumentException("Max capacity must be 4 or more.", "maxCapacity");
+                throw new ArgumentOutOfRangeException("Max capacity must be 4 or more.", "maxCapacity");
 
             if (Utility.CeilingNextPowerOfTwo(initialCapacity) >= Utility.CeilingNextPowerOfTwo(maxCapacity))
                 throw new ArgumentException("Initial capacity cannot exceed maximum capacity (both founded up to a power of 2", "initialCapacity");
 
+            // TODO: I Think this is left-shifted one because the lowest bit is used
+            // to indicate a resize is in progress.
             maxQueueCapacity = ((long)Utility.CeilingNextPowerOfTwo(maxCapacity)) << 1;
         }
 

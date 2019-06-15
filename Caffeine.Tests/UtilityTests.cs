@@ -80,5 +80,29 @@ namespace Caffeine.Tests
             int result = Utility.CeilingNextPowerOfTwo(1073741825);
             Assert.Equal<int>(-2147483648, result);
         }
+
+        [Fact]
+        public void LeadingZeros32Bit_1()
+        {
+            Assert.Equal<int>(31, Utility.LeadingZeros(1));
+        }
+
+        [Fact]
+        public void LeadingZeros32Bit_16()
+        {
+            Assert.Equal<int>(27, Utility.LeadingZeros(16));
+        }
+
+        [Fact]
+        public void LeadingZeros64Bit_1()
+        {
+            Assert.Equal<long>(63, Utility.LeadingZeros(1L));
+        }
+
+        [Fact]
+        public void LeadingZeros64Bit_256()
+        {
+            Assert.Equal<long>(55, Utility.LeadingZeros(256L));
+        }
     }
 }
