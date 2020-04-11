@@ -29,7 +29,7 @@ namespace Caffeine.Cache
     /// The maximum frequency of an element is limisted to 15 (4-bits) and an aging process
     /// periodically halves the popularity of all elements.
     /// </summary>
-    /// <typeparam name="T"></typeparam>
+    /// <typeparam name="T">The type of element to be counted</typeparam>
     public sealed class FrequencySketch<T>
     {
         /*
@@ -38,15 +38,24 @@ namespace Caffeine.Cache
          * allows it to cheaply estimate the frequency of an entry in a stream of cache access events.
          * 
          * The counter matrix is represented as a single dimensional array holding 16 counters per slot.
-         * A fixed depth of four blanaces the accuracy and cost, resulting in a width of four times
-         * the lenght of the array. To retain an accurate estimation the array's length equals the maximum
-         * number of entries in the cache, increased to the closest power-of-two to exploit more efficient
-         * bit masking. This configuration results in a confidence of 93.75% and error bound of e / width.
+         * A single slot in the array is a ulong, which provides 16, 4-bit counters per slot in the array.
+         * Each 4-bit grouping in the ulong represents a counter.
+         *
+         * 0 0 0 0   0 0 0 0   0 0 0 0   0 0 0 0   0 0 0 0   0 0 0 0   0 0 0 0   0 0 0 0 
+         * 64                                      47                                 32
+         * 0 0 0 0   0 0 0 0   0 0 0 0   0 0 0 0   0 0 0 0   0 0 0 0   0 0 0 0   0 0 0 0 
+         * 31                                      15                                  0
+         *
+         * A fixed depth (number of hashes) of four balnaces the accuracy and cost, resulting in a width
+         * of four times the length of the array. To retain an accurate estimation the array's length equals
+         * the maximum number of entries in the cache, increased to the closest power-of-two to exploit more
+         * efficient bit masking. This configuration results in a confidence of 93.75% and error bound of
+         * e / width.
          * 
-         * The frequency of all etnries is aged periodically using a sampling window based on the maximum
+         * The frequency of all entries is aged periodically using a sampling window based on the maximum
          * number of entries in the cache. This is referred to as the reset operation by TinyLfu and keeps
          * the sketch fresh by dividing all counters by two and subtracting based on the number of odd
-         * counters found. The O(n) cost of aging is amortized,  ideal for hardware prefetching, and uses
+         * counters found. The O(n) cost of aging is amortized, ideal for hardware prefetching, and uses
          * inexpensive bit manitpulations per array location.
          * 
          * A per instance smear is used to help protect against hash flooding [3], which would result
@@ -55,8 +64,10 @@ namespace Caffeine.Cache
          * 
          * [1] An Improved Data Stream Summary: the Count-Min Sketch and its Applications
          * http://dimacs.rutgers.edu/~graham/pubs/papers/cm-full.pdf
+         * 
          * [2] TinyLFU: A Highly Efficient Cache Admission Policy
          * http://arxiv.org/pdf/1512.00727.pdf
+         * 
          * [3] Denial of Service via Algorithmic Complexity Attack
          * https://www.usenix.org/legacy/events/sec03/tech/full_papers/crosby/crosby.pdf
          * 
@@ -64,13 +75,17 @@ namespace Caffeine.Cache
 
         // a mixture of seeds from FNV-1A, CityHash and Murmur3
         static readonly ulong[] SEED = new ulong[] { 0xc3a5c85c97cb3127, 0xb492b66fbe98f273, 0x9ae16a3b2f90404f, 0xcbf29ce484222325 };
+        
+        // this represents the number of hashes used in a sketch.
+        // equal to the number of hashes provided in the seed array above.
+        static readonly ushort SKETCH_DEPTH = (ushort)SEED.Length;
 
         static readonly ulong RESET_MASK = 0x7777777777777777;
         static readonly ulong ONE_MASK = 0x1111111111111111;
 
         private readonly int randomSeed;
 
-        private int sampleSize;
+        private uint maxSamplesBeforeResize;
         private int tableMask;
         private ulong[] table;
         private uint size;
@@ -83,29 +98,35 @@ namespace Caffeine.Cache
         }
 
         public FrequencySketch()
-        {
+        { 
             randomSeed = 1 | random.Value.Next();
         }
 
         /// <summary>
         /// Initializes and if necessary, increases the capacity of this <see cref="FrequencySketch{T}"/> instance to
         /// ensure that it can accurately estimate the popularity of elements given the maximumSize
-        /// of the cache. This operation forgets all previous counts when resizing.
+        /// of the cache. This operation forgets all previous counts if it has to resize.
+        /// 
+        /// The absolute maximum is <see cref="System.UInt32.MaxValue"/>
         /// </summary>
         /// <param name="maximumSize">The maximum size of the cache</param>
         public void EnsureCapacity(ulong maximumSize)
         {
-            int maximum = (int)Math.Min(maximumSize, uint.MaxValue >> 1);
+            if (maximumSize == 0)
+                throw new ArgumentOutOfRangeException("maximumSize", "value must be greater than 0");
 
-            if ((table != null) && table.Length >= maximum)
+            uint maximumNumberofElements = (uint)Math.Min(maximumSize, uint.MaxValue >> 1);
+
+            if ((table != null) && table.Length >= maximumNumberofElements)
                 return;
 
-            table = new ulong[(maximum == 0) ? 1 : Utility.CeilingNextPowerOfTwo(maximum)];
-            tableMask = Math.Max(0, table.Length - 1);
-            sampleSize = (maximumSize == 0) ? 10 : (10 * maximum);
+            table = new ulong[Utility.CeilingNextPowerOfTwo(maximumNumberofElements)];
+            tableMask = table.Length - 1;
+            maxSamplesBeforeResize = (10 * maximumNumberofElements);
 
-            if (sampleSize <= 0)
-                sampleSize = int.MaxValue;
+            // C# overflow on a uint is back to 0, so check for that condition.. 
+            if (maxSamplesBeforeResize <= 0)
+                maxSamplesBeforeResize = uint.MaxValue;
 
             size = 0;
         }
@@ -134,8 +155,7 @@ namespace Caffeine.Cache
             int start = (hash & 3) << 2;
             int frequency = Int32.MaxValue;
 
-            // TODO: magic number.. can we replace "4" with a human word to describe what it means?
-            for (int i = 0; i < 4; i++)
+            for (ushort i = 0; i < SKETCH_DEPTH; i++)
             {
                 int index = IndexOf(hash, i);
                 int count = (int)((table[index] >> ((start + i) << 2)) & 0xf);
@@ -155,7 +175,7 @@ namespace Caffeine.Cache
         public void Increment(T element)
         {
             if (IsNotInitialized)
-                return;
+                throw new Exception("sketch has not been initialized. Call EnsureCapacity() first.");
 
             int hash = Spread(element.GetHashCode());
             int start = (hash & 3) << 2;
@@ -170,7 +190,7 @@ namespace Caffeine.Cache
             added |= IncrementAt(index2, start + 2);
             added |= IncrementAt(index3, start + 3);
 
-            if (added && (++size == sampleSize))
+            if (added && (++size == maxSamplesBeforeResize))
                 Reset();
         }
 
@@ -215,7 +235,7 @@ namespace Caffeine.Cache
         /// <param name="item">the element's hash.</param>
         /// <param name="i">the counter depth</param>
         /// <returns>the table index</returns>
-        private int IndexOf(int itemHash, int counterDepth)
+        private int IndexOf(int itemHash, ushort counterDepth)
         {
             ulong hash = SEED[counterDepth] * (ulong)itemHash;
             hash += hash >> 32;

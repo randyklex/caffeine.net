@@ -42,7 +42,7 @@ namespace Caffeine.Cache.Stats
             {
                 @delegate.RecordEviction(weight);
             }
-            catch (Exception e)
+            catch 
             { }
         }
 
@@ -52,7 +52,7 @@ namespace Caffeine.Cache.Stats
             {
                 @delegate.RecordHits(count);
             }
-            catch(Exception e)
+            catch
             { }
         }
 
@@ -62,7 +62,7 @@ namespace Caffeine.Cache.Stats
             {
                 @delegate.RecordLoadFailure(loadTime);
             }
-            catch (Exception e)
+            catch
             { }
         }
 
@@ -72,7 +72,7 @@ namespace Caffeine.Cache.Stats
             {
                 @delegate.RecordLoadSuccess(loadTime);
             }
-            catch (Exception e)
+            catch
             { }
         }
 
@@ -82,7 +82,7 @@ namespace Caffeine.Cache.Stats
             {
                 @delegate.RecordMisses(count);
             }
-            catch (Exception e)
+            catch
             { }
         }
 
@@ -93,7 +93,7 @@ namespace Caffeine.Cache.Stats
             {
                 return @delegate.Snapshot();
             }
-            catch (Exception e)
+            catch
             {
                 return CacheStats.EmptyStats;
             }

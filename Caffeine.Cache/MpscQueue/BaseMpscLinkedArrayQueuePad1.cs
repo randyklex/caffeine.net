@@ -14,7 +14,9 @@ namespace Caffeine.Cache.MpscQueue
 {
     internal class BaseMpscLinkedArrayQueuePad1<T>
     {
+        #pragma warning disable CS0169
         long p01, p02, p03, p04, p05, p06, p07;
         long p10, p11, p12, p13, p14, p15, p16, p17;
+        #pragma warning restore CS0169
     }
 }

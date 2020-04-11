@@ -26,7 +26,8 @@ namespace Caffeine.Cache
 {
     public sealed class RingBuffer<T> : ReadAndWriteCounterRef<T> where T : class
     {
-        // TODO: this is just putting spacing between the elements of the buffer. We also need to add padding, because C# Array has metadata at the beginning the checks array bounds.
+        // TODO: this is just putting spacing between the elements of the buffer.
+        // We also need to add padding, because C# Array has metadata at the beginning the checks array bounds.
 
         // the maximum number of elements per buffer.
         private static int BUFFER_SIZE = 16;
@@ -111,8 +112,10 @@ namespace Caffeine.Cache
 
     public abstract class PadReadCounter<T1> : Buffer<T1>
     {
+        #pragma warning disable CS0169 // the field is never used.
         long p00, p01, p02, p03, p04, p05, p06, p07;
         long p10, p11, p12, p13, p14, p15, p16;
+        #pragma warning restore CS0169
     }
 
     public abstract class ReadCounterRef<T2> : PadReadCounter<T2>
@@ -122,8 +125,10 @@ namespace Caffeine.Cache
 
     public abstract class PadWriteCounter<T3> : ReadCounterRef<T3>
     {
+        #pragma warning disable CS0169 // the field is never used.
         long p20, p21, p22, p23, p24, p25, p26, p27;
         long p30, p31, p32, p33, p34, p35, p36;
+        #pragma warning restore CS0169
     }
 
     public abstract class ReadAndWriteCounterRef<T4> : PadWriteCounter<T4>

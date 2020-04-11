@@ -2237,8 +2237,10 @@ namespace Caffeine.Cache
 
     public abstract class PadDrainStatus<K, V> : LocalCache<K, V>
     {
+        #pragma warning disable CS0169 // the field is never used
         long p00, p01, p02, p03, p04, p05, p06, p07;
         long p10, p11, p12, p13, p14, p15, p16;
+        #pragma warning restore CS0169
     }
 
     public abstract class DrainStatusRef<K, V> : PadDrainStatus<K, V>

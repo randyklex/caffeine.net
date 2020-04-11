@@ -27,8 +27,10 @@ namespace Caffeine.Cache.MpscQueue
 {
     internal abstract class MpscChunkedArrayQueuecs<T> : MpscChunkedArrayQueueColdProducerFields<T>
     {
+        #pragma warning disable CS0169
         long po0, p1, p2, p3, p4, p5, p6, p7;
         long p10, p11, p12, p13, p14, p15, p16, p17;
+        #pragma warning restore CS0169
 
         public MpscChunkedArrayQueuecs(int initialCapacity, int maxCapacity)
             : base(initialCapacity, maxCapacity)
